@@ -1,6 +1,5 @@
 import joblib
 from skimage.feature import local_binary_pattern
-from skimage import io
 from skimage.transform import resize
 import numpy as np
 from segmentation import process_image  # Import the segmentation function

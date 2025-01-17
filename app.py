@@ -1,30 +1,47 @@
+import atexit
+import os
 import sys
-import os
-
-from werkzeug.utils import secure_filename
-
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-import cv2
-from flask import Flask, render_template, session, url_for
+import uuid
 import sqlite3
-from werkzeug.security import generate_password_hash, check_password_hash
-import re  # For input validation
-import os
-from flask import request, flash, redirect
-from flask import send_from_directory
-from predict_image import predict_image
-from segmentation import process_image
+import re
+from datetime import datetime
 
+import cv2
+from flask import Flask, render_template, session, request, redirect, url_for, flash, send_from_directory
+from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
+from predict_ml import MLClassifier
+from segmentation import segment_image
+
+# Flask app configuration
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Required for flashing messages
+app.secret_key = 'your_secret_key'
 
 UPLOAD_FOLDER = '/Users/ecekocabay/Desktop/CNG491/BreastCancerGUI 2/static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-MODEL_PATH = os.getenv('MODEL_PATH', '/Users/ecekocabay/Desktop/CNG491/BreastCancerGUI 2/random_forest_model.pkl')
+# Model and scaler paths
+MODEL_PATH = "/Users/ecekocabay/Desktop/CNG491/BreastCancerGUI 2/models/random_forest_model.pkl"
+SCALER_PATH = "/Users/ecekocabay/Desktop/CNG491/BreastCancerGUI 2/process/scaler.pkl"
 
-from functools import wraps
+# Initialize ML Classifier
+ml_classifier = MLClassifier(MODEL_PATH, SCALER_PATH)
+
+# Cleanup function to delete all files in the upload folder
+def cleanup_upload_folder():
+    print("Cleaning up upload folder...")
+    for filename in os.listdir(app.config['UPLOAD_FOLDER']):
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        try:
+            if os.path.isfile(file_path):
+                os.unlink(file_path)  # Remove the file
+        except Exception as e:
+            print(f"Error deleting file {file_path}: {e}")
+
+# Register the cleanup function to run at exit
+atexit.register(cleanup_upload_folder)
 
 def login_required(f):
     @wraps(f)
@@ -35,6 +52,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -43,107 +61,72 @@ def register():
         email = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
 
-        # Validate required fields
-        if not fullname:
-            flash('Full Name is required.', 'danger')
-            return render_template('register.html')
-        if not diploma_number:
-            flash('Diploma Number is required.', 'danger')
-            return render_template('register.html')
-        if not email:
-            flash('Email is required.', 'danger')
-            return render_template('register.html')
-        if not password:
-            flash('Password is required.', 'danger')
+        if not fullname or not diploma_number or not email or not password:
+            flash('All fields are required.', 'danger')
             return render_template('register.html')
 
-        # Validate password strength
         password_regex = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{8,}$'
         if not re.match(password_regex, password):
-            flash('Password should be at least 8 characters long, include one uppercase letter, one lowercase letter, and one number.', 'danger')
+            flash('Password must be 8+ characters long, including an uppercase, lowercase, and a number.', 'danger')
             return render_template('register.html')
 
-        # Check for duplicate diploma number
         conn = sqlite3.connect('radiologist_system.db')
         cursor = conn.cursor()
         cursor.execute('SELECT id FROM Radiologists WHERE diploma_number = ?', (diploma_number,))
-        duplicate_diploma = cursor.fetchone()
-
-        if duplicate_diploma:
-            flash('There is already someone with this diploma number.', 'danger')
+        if cursor.fetchone():
+            flash('This diploma number is already registered.', 'danger')
             conn.close()
             return render_template('register.html')
 
-        # Hash the password
         hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-
-        # Insert into database
         try:
             cursor.execute('''
                 INSERT INTO Radiologists (fullname, diploma_number, email, password)
                 VALUES (?, ?, ?, ?)
             ''', (fullname, diploma_number, email, hashed_password))
             conn.commit()
-            flash('Registration successful! You can now log in.', 'success')
-            return redirect('/')  # Redirect to the login page
+            flash('Registration successful! Please log in.', 'success')
+            return redirect('/')
         except sqlite3.IntegrityError as e:
-            flash(f'An unexpected error occurred during registration: {str(e)}', 'danger')
+            flash(f'Error during registration: {str(e)}', 'danger')
         finally:
             conn.close()
 
-    return render_template('register.html')  # Render the registration page on GET requests or errors
+    return render_template('register.html')
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         diploma_number = request.form.get('diploma_number', '').strip()
         password = request.form.get('password', '').strip()
 
-        # Validate required fields
-        if not diploma_number:
-            flash('Diploma Number is required.', 'danger')
-            return render_template('login.html')
-        if not password:
-            flash('Password is required.', 'danger')
-            return render_template('login.html')
+        if not diploma_number or not password:
+            return render_template('login.html', error_message="Both fields are required.")
 
-        # Check if the diploma number exists in the database
         conn = sqlite3.connect('radiologist_system.db')
         cursor = conn.cursor()
-        cursor.execute('''
-            SELECT id, password FROM Radiologists WHERE diploma_number = ?
-        ''', (diploma_number,))
+        cursor.execute('SELECT id, password FROM Radiologists WHERE diploma_number = ?', (diploma_number,))
         radiologist = cursor.fetchone()
         conn.close()
 
-        if not radiologist:
-            # Diploma number not found
-            flash('No account found with the provided diploma number.', 'danger')
-            return render_template('login.html')
+        if not radiologist or not check_password_hash(radiologist[1], password):
+            return render_template('login.html', error_message="Invalid Diploma Number or Password.")
 
-        # Check if the password matches
-        radiologist_id, hashed_password = radiologist
-        if not check_password_hash(hashed_password, password):
-            # Password incorrect
-            flash('Incorrect password. Please try again.', 'danger')
-            return render_template('login.html')
-
-        # Store radiologist ID in session
-        session['user_id'] = radiologist_id
-
-        # Successful login
-        flash('Login successful!', 'success')
-        return redirect('/home')  # Redirect to the home page
+        # Login success
+        session['user_id'] = radiologist[0]
+        return redirect('/home')
 
     return render_template('login.html')
-
 @app.route('/home')
 @login_required
 def home():
     return render_template('home.html')
+
+
 @app.route('/')
 def index():
     session.clear()
-    return render_template('index.html')  # Render the homepage
+    return render_template('index.html')
 
 
 @app.route('/view_previous', methods=['GET', 'POST'])
@@ -157,21 +140,18 @@ def view_previous():
     conn = sqlite3.connect('radiologist_system.db')
     cursor = conn.cursor()
 
-    # Handle patient name filter if provided
     patient_name = request.form.get('patient_name', '').strip() if request.method == 'POST' else ''
     if patient_name:
-        # Query for filtering by patient name
         cursor.execute('''
-            SELECT CR.classification_date, CR.prediction, CR.confidence, P.fullname AS patient_name
+            SELECT CR.classification_date, CR.prediction, CR.confidence, P.fullname
             FROM ClassificationResults CR
             JOIN Patients P ON CR.patient_id = P.id
             WHERE CR.radiologist_id = ? AND P.fullname LIKE ?
             ORDER BY CR.classification_date DESC
         ''', (radiologist_id, f"%{patient_name}%"))
     else:
-        # Query for all results of the logged-in radiologist
         cursor.execute('''
-            SELECT CR.classification_date, CR.prediction, CR.confidence, P.fullname AS patient_name
+            SELECT CR.classification_date, CR.prediction, CR.confidence, P.fullname
             FROM ClassificationResults CR
             JOIN Patients P ON CR.patient_id = P.id
             WHERE CR.radiologist_id = ?
@@ -180,12 +160,13 @@ def view_previous():
 
     results = cursor.fetchall()
     conn.close()
-
     return render_template('previous_results.html', results=results, patient_name=patient_name)
+
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 @app.route('/process', methods=['POST'])
 @login_required
 def process():
@@ -204,35 +185,63 @@ def process():
         return redirect('/home')
 
     try:
+        # Save the uploaded file
         filename = secure_filename(file.filename)
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(file_path)
-        print(f"Debug: Original file saved at {file_path}")
+        print(f"Original uploaded file path: {file_path}")
 
-        # Segment the image
-        segmented_image = process_image(file_path)
-        if segmented_image is None:
-            flash('Segmentation failed. No region of interest detected.', 'danger')
-            return redirect('/home')
+        # Perform prediction (segmentation handled inside the classifier)
+        predicted_class, confidence, segmented_image_path = ml_classifier.predict(file_path)
 
-        segmented_image_filename = f"segmented_{filename.split('.')[0]}.jpg"
-        segmented_image_path = os.path.join(app.config['UPLOAD_FOLDER'], segmented_image_filename)
-        cv2.imwrite(segmented_image_path, segmented_image)
-        print(f"Debug: Segmented image saved at {segmented_image_path}")
+        # Generate URL for segmented image
+        segmented_image_filename = os.path.basename(segmented_image_path)
+        segmented_image_url = url_for('uploaded_file', filename=segmented_image_filename)
+        print(f"Generated URL for segmented image: {segmented_image_url}")
 
-        segmented_image_url = url_for('static', filename=f"uploads/{segmented_image_filename}")
-        print(f"Debug: Segmented image URL: {segmented_image_url}")
+        # Store results in the database
+        conn = sqlite3.connect('radiologist_system.db')
+        cursor = conn.cursor()
 
-        # Predict the class and confidence
-        print("Debug: Starting prediction...")
-        prediction, confidence = predict_image(segmented_image_path, MODEL_PATH)
-        print(f"Debug: Prediction successful - Class: {prediction}, Confidence: {confidence}")
+        # Get the radiologist's ID from the session
+        radiologist_id = session.get('user_id')
 
-        # Render the result page
+        # Check if the patient already exists in the database
+        cursor.execute('SELECT id FROM Patients WHERE fullname = ?', (patient_name,))
+        patient = cursor.fetchone()
+
+        if not patient:
+            # Insert new patient if not found
+            current_date = datetime.now().strftime('%Y-%m-%d')
+            cursor.execute(
+                '''
+                INSERT INTO Patients (fullname, radiologist_id, dob, patient_id)
+                VALUES (?, ?, ?, ?)
+                ''',
+                (patient_name, radiologist_id, current_date, str(uuid.uuid4()))
+            )
+            conn.commit()
+            patient_id = cursor.lastrowid
+        else:
+            # Use existing patient's ID
+            patient_id = patient[0]
+
+        # Insert classification result into the database
+        cursor.execute(
+            '''
+            INSERT INTO ClassificationResults (patient_id, radiologist_id, prediction, confidence, classification_date)
+            VALUES (?, ?, ?, ?, ?)
+            ''',
+            (patient_id, radiologist_id, predicted_class, confidence, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        )
+        conn.commit()
+        conn.close()
+
+        # Render result
         return render_template(
             'result.html',
             segmented_image=segmented_image_url,
-            prediction=prediction,
+            prediction=predicted_class,
             confidence=confidence
         )
     except Exception as e:
@@ -242,7 +251,9 @@ def process():
 @app.route('/logout')
 def logout():
     session.clear()
-    flash('You have been logged out.', 'info')
+    flash('Logged out.', 'info')
     return redirect('/')
+
+
 if __name__ == "__main__":
     app.run(debug=True)

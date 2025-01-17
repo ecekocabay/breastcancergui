@@ -32,7 +32,12 @@
         .flash-messages {
             margin-bottom: 15px;
             font-size: 14px;
+        }
+        .flash-messages p.success {
             color: green;
+        }
+        .flash-messages p.danger {
+            color: red;
         }
         form {
             display: flex;
@@ -78,6 +83,11 @@
         .register-link:hover {
             text-decoration: underline;
         }
+        @media (max-width: 768px) {
+            .container {
+                width: 90%;
+            }
+        }
     </style>
 </head>
 <body>
@@ -98,15 +108,28 @@
         <form method="POST" action="/login">
             <div class="form-group">
                 <label for="diploma_number">Diploma Number:</label>
-                <input type="text" id="diploma_number" name="diploma_number" required>
+                <input type="text" id="diploma_number" name="diploma_number" aria-label="Diploma Number" required>
             </div>
             <div class="form-group">
                 <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
+                <div style="position: relative; width: 100%;">
+                    <input type="password" id="password" name="password" aria-label="Password" required>
+                    <button type="button" onclick="togglePassword()" style="position: absolute; top: 50%; right: 10px; transform: translateY(-50%); background: none; border: none; font-size: 14px; cursor: pointer;">
+                        Show
+                    </button>
+                </div>
             </div>
             <button type="submit">Log In</button>
         </form>
         <a href="/register" class="register-link">Don't have an account? Click here to register.</a>
     </div>
+
+    <script>
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const type = passwordInput.type === 'password' ? 'text' : 'password';
+            passwordInput.type = type;
+        }
+    </script>
 </body>
 </html>

@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
-    <link rel="stylesheet" href="static/css/style.css">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -29,10 +28,13 @@
             margin-bottom: 20px;
             color: #333333;
         }
-        form {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 14px;
         }
         .form-group {
             margin-bottom: 15px;
@@ -42,7 +44,7 @@
         label {
             font-weight: bold;
             margin-bottom: 5px;
-            display: block;
+            display: inline-block;
         }
         input {
             width: 100%;
@@ -64,25 +66,30 @@
         button:hover {
             background-color: #0056b3;
         }
-        .flash-messages {
-            margin-bottom: 10px;
-            color: red;
+        a {
+            color: #007bff;
+            text-decoration: none;
             font-size: 14px;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .register-link {
+            margin-top: 10px;
+            display: inline-block;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Login</h1>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        <div class="flash-messages">
-            {% for category, message in messages %}
-            <p class="{{ category }}">{{ message }}</p>
-            {% endfor %}
+        <h1>Welcome to the Breast Cancer Detection System</h1>
+        <!-- Display error message if it exists -->
+        {% if error_message %}
+        <div class="error-message">
+            {{ error_message }}
         </div>
         {% endif %}
-        {% endwith %}
+        <!-- Login Form -->
         <form method="POST" action="/login">
             <div class="form-group">
                 <label for="diploma_number">Diploma Number:</label>
@@ -94,6 +101,9 @@
             </div>
             <button type="submit">Log In</button>
         </form>
+        <div class="register-link">
+            <a href="/register">Don't have an account? Click here to register.</a>
+        </div>
     </div>
 </body>
 </html>

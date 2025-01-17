@@ -20,6 +20,11 @@
             color: #333;
             margin-bottom: 20px;
         }
+        .flash-messages {
+            margin-bottom: 15px;
+            font-size: 14px;
+            color: red;
+        }
         form {
             display: flex;
             justify-content: center;
@@ -69,6 +74,11 @@
         tr:hover {
             background-color: #e9f5ff;
         }
+        .empty-message {
+            margin-top: 20px;
+            color: #6c757d;
+            font-size: 16px;
+        }
         .button-container {
             margin-top: 20px;
             display: flex;
@@ -91,6 +101,16 @@
         .logout-btn:hover {
             background-color: #c82333;
         }
+        @media (max-width: 768px) {
+            table {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+            }
+            input[type="text"] {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
@@ -98,11 +118,12 @@
 
     <!-- Filter by Patient Name -->
     <form method="POST" action="/view_previous">
-        <input type="text" id="patient_name" name="patient_name" value="{{ patient_name }}" placeholder="Enter patient name">
+        <input type="text" id="patient_name" name="patient_name" value="{{ patient_name }}" placeholder="Enter patient name" aria-label="Search patient name">
         <button type="submit">Search</button>
     </form>
 
     <!-- Results Table -->
+    {% if results %}
     <table>
         <tr>
             <th>Patient Name</th>
@@ -119,6 +140,9 @@
         </tr>
         {% endfor %}
     </table>
+    {% else %}
+    <p class="empty-message">No classification results found for the specified patient.</p>
+    {% endif %}
 
     <div class="button-container">
         <a href="/home">Back to Home</a>

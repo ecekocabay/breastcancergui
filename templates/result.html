@@ -24,6 +24,27 @@
             border-radius: 5px;
             margin-bottom: 20px;
         }
+        .result-container {
+            display: inline-block;
+            text-align: left;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            background-color: #ffffff;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .result-container p {
+            margin: 10px 0;
+        }
+        .confidence {
+            font-weight: bold;
+            color: #28a745; /* Default green */
+        }
+        .low-confidence {
+            color: #dc3545; /* Red for low confidence */
+        }
         .button-container {
             margin-top: 20px;
             display: flex;
@@ -47,14 +68,32 @@
         .logout-btn:hover {
             background-color: #c82333;
         }
+        @media (max-width: 768px) {
+            .result-container {
+                width: 90%;
+                padding: 15px;
+            }
+            p {
+                font-size: 16px;
+            }
+        }
     </style>
 </head>
 <body>
     <h2>Prediction Results</h2>
-    <p><strong>Segmented Image:</strong></p>
-    <img src="{{ segmented_image }}" alt="Segmented Image">
-    <p><strong>Predicted Class:</strong> {{ prediction }}</p>
-    <p><strong>Confidence Score:</strong> {{ confidence }}%</p>
+
+    <div class="result-container">
+        <p><strong>Segmented Image:</strong></p>
+        <img src="{{ segmented_image }}" alt="Segmented Image" style="max-width:100%; height:auto; border:1px solid #ccc;">
+        <p><strong>Predicted Class:</strong> <span>{{ prediction }}</span></p>
+
+        <p>
+            <strong>Confidence Score:</strong>
+            <span class="confidence {{ 'low-confidence' if confidence < 70 else '' }}">
+                {{ confidence }}%
+            </span>
+        </p>
+    </div>
 
     <div class="button-container">
         <a href="/home">Back to Home</a>
